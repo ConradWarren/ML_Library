@@ -4,6 +4,7 @@
 #include <fstream>
 
 void model::init(int _type, double _learning_rate, double _decay_rate, double _sgd_mass) {
+	gan_layer_boundry = -1;
 	type = _type;
 	starting_learning_rate = _learning_rate;
 	learning_rate = _learning_rate;
@@ -39,18 +40,18 @@ void model::add_layer(int inputs, int neurons) {
 	add_layer(inputs, neurons, activation_function::linear);
 }
 
-void model::forward(std::vector<std::vector<double>>& batched_data) {
+void model::forward(std::vector<std::vector<double>>& batched_data, int start_point, int end_point) {
 
-	if (layers.empty()) {
+	if (layers.size() <= start_point) {
 		return;
 	}
 
-	layers[0]->forward(batched_data);
-	if (activation_functions[0] == activation_function::rectified_linear) layers[0]->rectified_linear_activation_function();
+	layers[start_point]->forward(batched_data);
+	if (activation_functions[start_point] == activation_function::rectified_linear) layers[start_point]->rectified_linear_activation_function();
 
-	else if (activation_functions[0] == activation_function::sigmoid) layers[0]->sigmoid_activation_function();
+	else if (activation_functions[start_point] == activation_function::sigmoid) layers[start_point]->sigmoid_activation_function();
 
-	for (int i = 1; i < layer_count; i++) {
+	for (int i = start_point+1; i <= end_point; i++) {
 
 		layers[i]->forward(layers[i - 1]->output);
 
@@ -62,6 +63,37 @@ void model::forward(std::vector<std::vector<double>>& batched_data) {
 			//softmax goes here
 		}
 	}
+}
+
+void model::forward(std::vector<std::vector<double>>& batched_data) {
+	forward(batched_data, 0, layer_count-1);
+}
+
+void model::backward(std::vector<std::vector<double>>& batched_targets,std::vector<std::vector<double>>& batched_data, int start_point, int end_point) {
+
+	if (start_point >= layer_count) {
+		return;
+	}
+
+	if (start_point > 0) {
+		layers[start_point]->init_back_propagation(layers[start_point - 1]->output, batched_targets);
+	}
+	else {
+		layers[start_point]->init_back_propagation(batched_data, batched_targets);
+	}
+
+	for (int i = start_point - 1; i >= end_point+1; i--) {
+		layers[i]->backward(layers[i - 1]->output, layers[i + 1]->weights, layers[i + 1]->output);
+	}
+
+	if (start_point > 0) {
+		layers[end_point]->backward(batched_data, layers[end_point+1]->weights, layers[end_point+1]->output);
+	}
+}
+
+
+void model::backward(std::vector<std::vector<double>>& batched_targets, std::vector<std::vector<double>>& batched_data) {
+	backward(batched_targets, batched_data, layer_count - 1, 0);
 }
 
 void model::train(std::vector<std::vector<double>>& batched_data, std::vector<std::vector<double>>& batched_targets, bool print_loss) {
@@ -76,26 +108,104 @@ void model::train(std::vector<std::vector<double>>& batched_data, std::vector<st
 		std::cout << loss(batched_targets) << '\n';
 	}
 
-	if (layer_count > 1) {
-		layers[layer_count - 1]->init_back_propagation(layers[layer_count - 2]->output, batched_targets);
-	}
-	else {
-		layers[layer_count - 1]->init_back_propagation(batched_data, batched_targets);
-	}
-	for (int i = layer_count - 2; i >= 1; i--) {
-		layers[i]->backward(layers[i - 1]->output, layers[i + 1]->weights, layers[i + 1]->output);
-	}
-	if (layer_count > 1) {
-		layers[0]->backward(batched_data, layers[1]->weights, layers[1]->output);
-	}
+	backward(batched_targets, batched_data);
 
 	update_parameters();
 }
 
-void model::update_parameters() {
-	for (int i = 0; i < layer_count; i++) {
+void model::train_gan_classifier(std::vector<std::vector<double>>& batched_data, std::vector<std::vector<double>>& real_data, std::vector<std::vector<double>>& batch_lables, bool print_loss) {
+
+	if (layers.size() < 2) {
+		return;
+	}
+
+	if (type != model_type::general_adversarial) {
+		std::cout << "not valid model type\n";
+		return;
+	}
+
+	if (gan_layer_boundry == -1) {
+		std::cout << "layer boundry not set\n";
+		return;
+	}
+	
+	forward(batched_data, 0, gan_layer_boundry);
+	int idx = 0;
+	std::vector<std::vector<double>> classifier_training_batch(layers[gan_layer_boundry-1]->output.size() + real_data.size());
+
+	for (int i = 0; i < layers[gan_layer_boundry - 1]->output.size(); i++) {
+		classifier_training_batch[idx] = layers[gan_layer_boundry - 1]->output[i];
+		idx++;
+	}
+	for (int i = 0; i < real_data.size(); i++) {
+		classifier_training_batch[idx] = real_data[i];
+		idx++;
+	}
+
+	forward(classifier_training_batch, gan_layer_boundry, layer_count);
+	
+	if (print_loss) {
+		std::cout << layers[layer_count - 1]->loss(batch_lables) << '\n';
+	}
+
+	backward(batch_lables, classifier_training_batch, layer_count - 1, gan_layer_boundry);
+	
+	update_parameters(gan_layer_boundry, layer_count - 1);
+}
+
+void model::train_gan_classifier(std::vector<std::vector<double>>& batched_data, std::vector<std::vector<double>>& real_data, bool print_loss) {
+
+	std::vector<std::vector<double>> batch_lables(batched_data.size() + real_data.size(), std::vector<double>(1, 0.0));
+
+	for (int i = batched_data.size(); i < batch_lables.size(); i++) {
+		batch_lables[i][0] = 1.0;
+	}
+
+	train_gan_classifier(batched_data, real_data, batch_lables, print_loss);
+}
+
+void model::train_gan_generator(std::vector<std::vector<double>>& batched_data, std::vector<std::vector<double>>& batched_targets, bool print_loss) {
+
+	if (layers.size() < 2) {
+		return;
+	}
+
+	if (type != model_type::general_adversarial) {
+		std::cout << "not valid model type\n";
+		return;
+	}
+
+	if (gan_layer_boundry == -1) {
+		std::cout << "layer boundry not set\n";
+		return;
+	}
+
+	forward(batched_data);
+
+	if (print_loss) {
+		std::cout << loss(batched_targets) << '\n';
+	}
+
+	backward(batched_targets, batched_data);
+	
+	update_parameters(0, gan_layer_boundry - 1);
+}
+
+void model::train_gan_generator(std::vector<std::vector<double>>& batched_data, bool print_loss) {
+
+	std::vector<std::vector<double>> batched_targets(batched_data.size(), std::vector<double>(1, 1.0));
+
+	train_gan_generator(batched_data, batched_targets, print_loss);
+}
+
+void model::update_parameters(int start_point, int end_point) {
+	for (int i = start_point; i <= end_point; i++) {
 		layers[i]->train(learning_rate);
 	}
+}
+
+void model::update_parameters() {
+	update_parameters(0, layer_count - 1);
 }
 
 void model::decay() {
@@ -104,7 +214,21 @@ void model::decay() {
 }
 
 double model::loss(std::vector<std::vector<double>>& batched_targets) {
+	
 	return layers.back()->loss(batched_targets);
+}
+
+void model::set_layer_boundry(int _gan_layer_boundry) {
+	
+	if (type != model_type::general_adversarial) {
+		std::cout << "not valid model type\n";
+		return;
+	}
+	gan_layer_boundry = _gan_layer_boundry;
+}
+
+void model::set_layer_boundry() {
+	set_layer_boundry(layer_count);
 }
 
 void model::print_output() {
@@ -153,6 +277,10 @@ void model::save_weights(std::string file_name) {
 
 void model::load_output() {
 	output = layers.back()->output;
+}
+
+void model::load_output(int layer_idx) {
+	output = layers[layer_idx]->output;
 }
 
 void model::load_weights(std::string file_name) {
@@ -220,8 +348,6 @@ void model::load_weights(std::string file_name) {
 		}
 		std::getline(file, current_line);
 	}
-
-
 	file.close();
 }
 
@@ -230,4 +356,3 @@ model::~model() {
 		delete layers[i];
 	}
 }
-

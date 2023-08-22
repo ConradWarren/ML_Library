@@ -64,8 +64,6 @@ public:
 	void save_model(const std::string& file_name);
 	void load_model(const std::string& file_name);
 
-	std::vector<int> debug(int i) { return layers[i]->get_shape(); }
-
 	~model();
 private:
 	int type;

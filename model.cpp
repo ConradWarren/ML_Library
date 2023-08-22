@@ -1,354 +1,566 @@
 #include "model.h"
-#include <string>
 #include <iostream>
-#include <fstream>
 
-void model::init(int _type, double _learning_rate, double _decay_rate, double _sgd_mass) {
-	gan_layer_boundry = -1;
-	type = _type;
+void model::init_model(int _model_type, double _learning_rate, double _decay_rate, double _sgd_mass) {
+	type = _model_type;
 	starting_learning_rate = _learning_rate;
 	learning_rate = _learning_rate;
 	decay_rate = _decay_rate;
 	sgd_mass = _sgd_mass;
-	step = 0;
 	layer_count = 0;
+	step = 0;
 }
 
-model::model() {
-	init(model_type::regression, 1e-3, 0.0, 0.0);
-}
-model::model(int _model_type) {
-	init(_model_type, 1e-3, 0.0, 0.0);
+model::model(int _model_type, double _learning_rate, double _decay_rate, double _sgd_mass) {
+	init_model(_model_type, _learning_rate, _decay_rate, _sgd_mass);
 }
 model::model(int _model_type, double _learning_rate) {
-	init(_model_type, _learning_rate, 0.0, 0.0);
+	init_model(_model_type, learning_rate, 0, 0.9);
 }
-model::model(int _model_type, double _learning_rate, double _decay_rate) {
-	init(_model_type, _learning_rate, _decay_rate, 0.0);
+model::model(int _model_type) {
+	init_model(_model_type, 1e-3, 0, 0.9);
 }
-model::model(int _model_type, double _learning_rate, double _decay_rate, double _sgd_mass) {
-	init(_model_type, _learning_rate, _decay_rate, _sgd_mass);
+model::model() {
+	init_model(model_type::regression, 1e-3, 0, 0.9);
 }
 
-void model::add_layer(int inputs, int neurons, int _activation_function) {
-	layers.push_back(new layer(inputs, neurons, sgd_mass));
+void model::add_dense_layer(int _inputs, int _neurons, int _activation_function) {
+	layers.push_back(new dense_layer(_inputs, _neurons, sgd_mass));
 	activation_functions.push_back(_activation_function);
 	layer_count++;
 }
 
-void model::add_layer(int inputs, int neurons) {
-	add_layer(inputs, neurons, activation_function::linear);
+void model::add_convolutional_layer(int _input_size, int _input_channels, int _kernals, int _kernal_size, int _padding, int _stride, int _activation_function){
+	layers.push_back(new convolutional_layer(_input_size, _input_channels, _kernals, _kernal_size, _padding, _stride, sgd_mass));
+	activation_functions.push_back(_activation_function);
+	layer_count++;
 }
 
-void model::forward(std::vector<std::vector<double>>& batched_data, int start_point, int end_point) {
+void model::add_pooling_layer(int _input_size, int _input_channels, int _kernal_size, int _padding, int _stride) {
+	layers.push_back(new max_pooling_layer(_input_size, _input_channels, _kernal_size, _stride));
+	activation_functions.push_back(activation_function::linear);
+	layer_count++;
+}
 
-	if (layers.size() <= start_point) {
-		return;
+
+void model::forward(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_inputs, int starting_layer, int ending_layer) {
+	layers[starting_layer]->forward(batched_inputs);
+	if (activation_functions[starting_layer] == activation_function::sigmoid) {
+		layers[starting_layer]->sigmoid_activation_function();
+	}
+	else if (activation_functions[starting_layer] == activation_function::rectified_linear) {
+		layers[starting_layer]->rectified_linear_activation_function();
+	}
+	else if (activation_functions[starting_layer] == activation_function::softmax) {
+		layers[starting_layer]->softmax_activation_function();
 	}
 
-	layers[start_point]->forward(batched_data);
-	if (activation_functions[start_point] == activation_function::rectified_linear) layers[start_point]->rectified_linear_activation_function();
-
-	else if (activation_functions[start_point] == activation_function::sigmoid) layers[start_point]->sigmoid_activation_function();
-
-	for (int i = start_point+1; i <= end_point; i++) {
-
-		layers[i]->forward(layers[i - 1]->output);
-
-		if (activation_functions[i] == activation_function::rectified_linear) layers[i]->rectified_linear_activation_function();
-
-		else if (activation_functions[i] == activation_function::sigmoid) layers[i]->sigmoid_activation_function();
-
+	for (int i = starting_layer + 1; i < layers.size() && i <= ending_layer; i++) {
+		layers[i]->forward(layers[i - 1]);
+		if (activation_functions[i] == activation_function::linear) {
+			continue;
+		}
+		else if (activation_functions[i] == activation_function::sigmoid) {
+			layers[i]->sigmoid_activation_function();
+		}
+		else if (activation_functions[i] == activation_function::rectified_linear) {
+			layers[i]->rectified_linear_activation_function();
+		}
 		else if (activation_functions[i] == activation_function::softmax) {
-			//softmax goes here
+			layers[i]->softmax_activation_function();
 		}
 	}
 }
-
-void model::forward(std::vector<std::vector<double>>& batched_data) {
-	forward(batched_data, 0, layer_count-1);
-}
-
-void model::backward(std::vector<std::vector<double>>& batched_targets,std::vector<std::vector<double>>& batched_data, int start_point, int end_point) {
-
-	if (start_point >= layer_count) {
-		return;
+void model::forward(std::vector<std::vector<double>>& batched_inputs, int starting_layer, int ending_layer) {
+	layers[starting_layer]->forward(batched_inputs);
+	if (activation_functions[starting_layer] == activation_function::sigmoid) {
+		layers[starting_layer]->sigmoid_activation_function();
+	}
+	else if (activation_functions[starting_layer] == activation_function::rectified_linear) {
+		layers[starting_layer]->rectified_linear_activation_function();
+	}
+	else if (activation_functions[starting_layer] == activation_function::softmax) {
+		layers[starting_layer]->softmax_activation_function();
 	}
 
-	if (start_point > 0) {
-		layers[start_point]->init_back_propagation(layers[start_point - 1]->output, batched_targets);
+	for (int i = starting_layer + 1; i < layers.size() && i <= ending_layer; i++) {
+		layers[i]->forward(layers[i - 1]);
+		if (activation_functions[i] == activation_function::linear) {
+			continue;
+		}
+		else if (activation_functions[i] == activation_function::sigmoid) {
+			layers[i]->sigmoid_activation_function();
+		}
+		else if (activation_functions[i] == activation_function::rectified_linear) {
+			layers[i]->rectified_linear_activation_function();
+		}
+		else if (activation_functions[i] == activation_function::softmax) {
+			layers[i]->softmax_activation_function();
+		}
+	}
+}
+void model::forward(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_inputs) {
+	forward(batched_inputs, 0, layer_count - 1);
+}
+void model::forward(std::vector<std::vector<double>>& batched_inputs) {
+	forward(batched_inputs, 0, layer_count - 1);
+}
+
+std::vector<std::vector<double>> model::dense_layer_output(int layer_index) {
+	return layers[layer_index]->dl_forward_output;
+}
+std::vector<std::vector<std::vector<std::vector<double>>>> model::convolutional_layer_output(int layer_index) {
+	return layers[layer_index]->cl_forward_output;
+}
+
+double model::loss(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_targets) {
+	return layers.back()->loss(batched_targets);
+}
+double model::loss(std::vector<std::vector<double>>& batched_targets) {
+	return layers.back()->loss(batched_targets);
+}
+double model::loss(std::vector<int>&batched_targets) {
+	return layers.back()->loss(batched_targets); 
+}
+
+void model::backward(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_inputs, std::vector<std::vector<std::vector<std::vector<double>>>>& batched_targets, int starting_layer, int ending_layer) {
+
+	ending_layer = (ending_layer < layer_count - 1) ? ending_layer : layer_count - 1;
+
+	if (ending_layer == 0) {
+		layers[0]->init_backpropigation(batched_inputs, batched_targets);
+		return;
 	}
 	else {
-		layers[start_point]->init_back_propagation(batched_data, batched_targets);
+		layers[ending_layer]->init_backpropigation(layers[ending_layer - 1], batched_targets);
 	}
 
-	for (int i = start_point - 1; i >= end_point+1; i--) {
-		layers[i]->backward(layers[i - 1]->output, layers[i + 1]->weights, layers[i + 1]->output);
+	for (int i = ending_layer-1; i >= 1 && i >= starting_layer + 1; i--) {
+		layers[i]->backward(layers[i - 1]);
 	}
 
-	if (start_point > 0) {
-		layers[end_point]->backward(batched_data, layers[end_point+1]->weights, layers[end_point+1]->output);
-	}
+	layers[(0 > starting_layer) ? 0 : starting_layer]->backward(batched_inputs);
 }
+void model::backward(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_inputs, std::vector<std::vector<double>>& batched_targets, int starting_layer, int ending_layer) {
+	ending_layer = (ending_layer < layer_count - 1) ? ending_layer : layer_count - 1;
 
-
-void model::backward(std::vector<std::vector<double>>& batched_targets, std::vector<std::vector<double>>& batched_data) {
-	backward(batched_targets, batched_data, layer_count - 1, 0);
-}
-
-void model::train(std::vector<std::vector<double>>& batched_data, std::vector<std::vector<double>>& batched_targets, bool print_loss) {
-	
-	if (layers.empty()) {
+	if (ending_layer == 0) {
+		//error
 		return;
 	}
-
-	forward(batched_data);
-
-	if (print_loss) {
-		std::cout << loss(batched_targets) << '\n';
+	else {
+		layers[ending_layer]->init_backpropigation(layers[ending_layer - 1], batched_targets);
 	}
 
-	backward(batched_targets, batched_data);
+	for (int i = ending_layer - 1; i >= 1 && i >= starting_layer + 1; i--) {
+		layers[i]->backward(layers[i - 1]);
+	}
 
+	layers[(0 > starting_layer) ? 0 : starting_layer]->backward(batched_inputs);
+}
+void model::backward(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_inputs, std::vector<int>& batched_targets, int starting_layer, int ending_layer) {
+	ending_layer = (ending_layer < layer_count - 1) ? ending_layer : layer_count - 1;
+	
+	if (ending_layer == 0) {
+		//error
+		return;
+	}
+	else {
+		layers[ending_layer]->init_backpropigation(layers[ending_layer - 1], batched_targets);
+	}
+	
+	for (int i = ending_layer - 1; i >= 1 && i >= starting_layer + 1; i--) {
+		layers[i]->backward(layers[i - 1]);
+	}
+
+	layers[0]->backward(batched_inputs);
+}
+void model::backward(std::vector<std::vector<double>>& batched_inputs, std::vector<std::vector<std::vector<std::vector<double>>>>& batched_targets, int starting_layer, int ending_layer) {
+	ending_layer = (ending_layer < layer_count - 1) ? ending_layer : layer_count - 1;
+
+	if (ending_layer == 0) {
+		//error
+		return;
+	}
+	else {
+		layers[ending_layer]->init_backpropigation(layers[ending_layer - 1], batched_targets);
+	}
+
+	for (int i = ending_layer - 1; i >= 1 && i >= starting_layer + 1; i--) {
+		layers[i]->backward(layers[i - 1]);
+	}
+
+	layers[(0 > starting_layer) ? 0 : starting_layer]->backward(batched_inputs);
+}
+void model::backward(std::vector<std::vector<double>>& batched_inputs, std::vector<std::vector<double>>& batched_targets, int starting_layer, int ending_layer) {
+	ending_layer = (ending_layer < layer_count - 1) ? ending_layer : layer_count - 1;
+
+	if (ending_layer == 0) {
+		layers[0]->init_backpropigation(batched_inputs, batched_targets);
+		return;
+	}
+	else {
+		layers[ending_layer]->init_backpropigation(layers[ending_layer - 1], batched_targets);
+	}
+
+	for (int i = ending_layer - 1; i >= 1 && i >= starting_layer + 1; i--) {
+		layers[i]->backward(layers[i - 1]);
+	}
+
+	layers[(0 > starting_layer) ? 0 : starting_layer]->backward(batched_inputs);
+}
+void model::backward(std::vector<std::vector<double>>& batched_inputs, std::vector<int>& batched_targets, int starting_layer, int ending_layer) {
+	ending_layer = (ending_layer < layer_count - 1) ? ending_layer : layer_count - 1;
+
+	if (ending_layer == 0) {
+		layers[0]->init_backpropigation(batched_inputs, batched_targets);
+		return;
+	}
+	else {
+		layers[ending_layer]->init_backpropigation(layers[ending_layer - 1], batched_targets);
+	}
+
+	for (int i = ending_layer - 1; i >= 1 && i >= starting_layer + 1; i--) {
+		layers[i]->backward(layers[i - 1]);
+	}
+
+	layers[(0 > starting_layer) ? 0 : starting_layer]->backward(batched_inputs);
+}
+
+void model::backward(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_inputs, std::vector<std::vector<std::vector<std::vector<double>>>>& batched_targets) {
+	backward(batched_inputs, batched_targets, 0, layer_count - 1);
+}
+void model::backward(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_inputs, std::vector<std::vector<double>>& batched_targets) {
+	backward(batched_inputs, batched_targets, 0, layer_count - 1);
+}
+void model::backward(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_inputs, std::vector<int>& batched_targets) {
+	backward(batched_inputs, batched_targets, 0, layer_count - 1);
+}
+void model::backward(std::vector<std::vector<double>>& batched_inputs, std::vector<std::vector<std::vector<std::vector<double>>>>& batched_targets) {
+	backward(batched_inputs, batched_targets, 0, layer_count - 1);
+}
+void model::backward(std::vector<std::vector<double>>& batched_inputs, std::vector<std::vector<double>>& batched_targets) {
+	backward(batched_inputs, batched_targets, 0, layer_count - 1);
+}
+void model::backward(std::vector<std::vector<double>>& batched_inputs, std::vector<int>& batched_targets) {
+	backward(batched_inputs, batched_targets, 0, layer_count - 1);
+}
+
+void model::update_parameters(int starting_layer, int ending_layer) {
+	for (int i = starting_layer; i < layer_count && i <= ending_layer; i++) {
+		layers[i]->update_parameters(learning_rate);
+	}
+}
+void model::update_parameters() {
+	update_parameters(0, layer_count-1);
+}
+
+void model::train(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_inputs, std::vector<std::vector<std::vector<std::vector<double>>>>& batched_targets) {
+	forward(batched_inputs);
+	backward(batched_inputs, batched_targets);
+	update_parameters();
+}
+void model::train(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_inputs, std::vector<std::vector<double>>& batched_targets) {
+	forward(batched_inputs);
+	backward(batched_inputs, batched_targets);
+	update_parameters();
+}
+void model::train(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_inputs, std::vector<int>& batched_targets) {
+	forward(batched_inputs);
+	backward(batched_inputs, batched_targets);
+	update_parameters();
+}
+void model::train(std::vector<std::vector<double>>& batched_inputs, std::vector<std::vector<std::vector<std::vector<double>>>>& batched_targets) {
+	forward(batched_inputs);
+	backward(batched_inputs, batched_targets);
+	update_parameters();
+}
+void model::train(std::vector<std::vector<double>>& batched_inputs, std::vector<std::vector<double>>& batched_targets) {
+	forward(batched_inputs);
+	backward(batched_inputs, batched_targets);
+	update_parameters();
+}
+void model::train(std::vector<std::vector<double>>& batched_inputs, std::vector<int>& batched_targets) {
+	forward(batched_inputs);
+	backward(batched_inputs, batched_targets);
 	update_parameters();
 }
 
-void model::train_gan_classifier(std::vector<std::vector<double>>& batched_data, std::vector<std::vector<double>>& real_data, std::vector<std::vector<double>>& batch_lables, bool print_loss) {
-
-	if (layers.size() < 2) {
-		return;
-	}
-
-	if (type != model_type::general_adversarial) {
-		std::cout << "not valid model type\n";
-		return;
-	}
-
-	if (gan_layer_boundry == -1) {
-		std::cout << "layer boundry not set\n";
-		return;
-	}
-	
-	forward(batched_data, 0, gan_layer_boundry);
-	int idx = 0;
-	std::vector<std::vector<double>> classifier_training_batch(layers[gan_layer_boundry-1]->output.size() + real_data.size());
-
-	for (int i = 0; i < layers[gan_layer_boundry - 1]->output.size(); i++) {
-		classifier_training_batch[idx] = layers[gan_layer_boundry - 1]->output[i];
-		idx++;
-	}
-	for (int i = 0; i < real_data.size(); i++) {
-		classifier_training_batch[idx] = real_data[i];
-		idx++;
-	}
-
-	forward(classifier_training_batch, gan_layer_boundry, layer_count);
-	
-	if (print_loss) {
-		std::cout << layers[layer_count - 1]->loss(batch_lables) << '\n';
-	}
-
-	backward(batch_lables, classifier_training_batch, layer_count - 1, gan_layer_boundry);
-	
-	update_parameters(gan_layer_boundry, layer_count - 1);
-}
-
-void model::train_gan_classifier(std::vector<std::vector<double>>& batched_data, std::vector<std::vector<double>>& real_data, bool print_loss) {
-
-	std::vector<std::vector<double>> batch_lables(batched_data.size() + real_data.size(), std::vector<double>(1, 0.0));
-
-	for (int i = batched_data.size(); i < batch_lables.size(); i++) {
-		batch_lables[i][0] = 1.0;
-	}
-
-	train_gan_classifier(batched_data, real_data, batch_lables, print_loss);
-}
-
-void model::train_gan_generator(std::vector<std::vector<double>>& batched_data, std::vector<std::vector<double>>& batched_targets, bool print_loss) {
-
-	if (layers.size() < 2) {
-		return;
-	}
-
-	if (type != model_type::general_adversarial) {
-		std::cout << "not valid model type\n";
-		return;
-	}
-
-	if (gan_layer_boundry == -1) {
-		std::cout << "layer boundry not set\n";
-		return;
-	}
-
-	forward(batched_data);
-
-	if (print_loss) {
-		std::cout << loss(batched_targets) << '\n';
-	}
-
-	backward(batched_targets, batched_data);
-	
-	update_parameters(0, gan_layer_boundry - 1);
-}
-
-void model::train_gan_generator(std::vector<std::vector<double>>& batched_data, bool print_loss) {
-
-	std::vector<std::vector<double>> batched_targets(batched_data.size(), std::vector<double>(1, 1.0));
-
-	train_gan_generator(batched_data, batched_targets, print_loss);
-}
-
-void model::update_parameters(int start_point, int end_point) {
-	for (int i = start_point; i <= end_point; i++) {
-		layers[i]->train(learning_rate);
-	}
-}
-
-void model::update_parameters() {
-	update_parameters(0, layer_count - 1);
-}
-
-void model::decay() {
+void model::decay_learning_rate() {
 	step++;
-	learning_rate = starting_learning_rate / (1.0 + (decay_rate * step));
+	learning_rate = starting_learning_rate * (1.0 / (1.0 + decay_rate * step));
 }
 
-double model::loss(std::vector<std::vector<double>>& batched_targets) {
-	
-	return layers.back()->loss(batched_targets);
-}
-
-void model::set_layer_boundry(int _gan_layer_boundry) {
-	
-	if (type != model_type::general_adversarial) {
-		std::cout << "not valid model type\n";
-		return;
-	}
-	gan_layer_boundry = _gan_layer_boundry;
-}
-
-void model::set_layer_boundry() {
-	set_layer_boundry(layer_count);
-}
-
-void model::print_output() {
-	
-	for (int i = 0; i < layers.back()->output.size(); i++) {
-		std::cout << "{";
-		for (int j = 0; j < layers.back()->output[i].size(); j++) {
-			std::cout << layers.back()->output[i][j];
-			if (j != layers.back()->output[i].size() - 1) {
-				std::cout << ", ";
-			}
-		}
-		std::cout << "}\n";
-	}
-}
-
-void model::save_weights(std::string file_name) {
+void model::save_model(const std::string& file_name) {
 
 	std::ofstream file(file_name, std::ios::out);
-
 	if (!file.is_open()) {
 		std::cout << "could not open file\n";
 		return;
 	}
-
 	for (int i = 0; i < layers.size(); i++) {
 
-		file << "layer_shape," << layers[i]->inputs << ',' << layers[i]->neurons << ','<<activation_functions[i]<<",\n";
-
-		for (int j = 0; j < layers[i]->neurons; j++) {
-
-			for (int x = 0; x < layers[i]->inputs; x++) {
-				file << layers[i]->weights[j][x] << ',';
-			}
-			file << '\n';
+		if (layers[i]->dl_flag) {
+			write_dense_layer(file, i);
 		}
-
-		for (int j = 0; j < layers[i]->neurons; j++) {
-			file << layers[i]->bais[j] << ',';
+		else if(layers[i]->pl_flag) {
+			write_pooling_layer(file, i);
 		}
-		file << '\n';
+		else {
+			write_convolutional_layer(file, i);
+		}
 	}
-
 	file.close();
 }
 
-void model::load_output() {
-	output = layers.back()->output;
+void model::write_dense_layer(std::ofstream& file, int layer_idx) {
+	std::vector<int> shape = layers[layer_idx]->get_shape();
+	std::vector<std::vector<double>> weights = layers[layer_idx]->get_dl_weights();
+	std::vector<double> bais = layers[layer_idx]->get_bais();
+
+	file << "dense_layer,"<<shape[0]<<','<<shape[1]<<','<<activation_functions[layer_idx] << ",\n";
+
+	for (int i = 0; i < weights.size(); i++) {
+		for (int j = 0; j < weights[0].size(); j++) {
+			file << weights[i][j] << ",";
+		}
+		file << "\n";
+	}
+
+	for (int i = 0; i < bais.size(); i++) {
+		file << bais[i] << ",";
+	}
+	file << "\n";
+}
+void model::write_convolutional_layer(std::ofstream& file, int layer_idx) {
+
+	std::vector<int> shape = layers[layer_idx]->get_shape();
+	std::vector<std::vector<std::vector<std::vector<double>>>> weights = layers[layer_idx]->get_cl_weights();
+	std::vector<double> bais = layers[layer_idx]->get_bais();
+
+	file << "convolutional_layer,";
+	for (int i = 0; i < shape.size(); i++) {
+		file << shape[i] << ",";
+	}
+	file << activation_functions[layer_idx] << ",\n";
+	
+	for (int i = 0; i < weights.size(); i++) {
+		for (int j = 0; j < weights[0].size(); j++) {
+			for (int y = 0; y < weights[0][0].size(); y++) {
+				for (int x = 0; x < weights[0][0][0].size(); x++) {
+					file << weights[i][j][y][x] << ",";
+				}
+			}
+			file << "\n";
+		}
+	}
+
+	for (int i = 0; i < bais.size(); i++) {
+		file << bais[i] << ",";
+	}
+	file<< "\n";
+
+}
+void model::write_pooling_layer(std::ofstream& file, int layer_idx) {
+	std::vector<int> shape = layers[layer_idx]->get_shape();
+
+	file << "max_pooling_layer,";
+	for (int i = 0; i < shape.size(); i++) {
+		file << shape[i] << ",";
+	}
+	file << "\n";
 }
 
-void model::load_output(int layer_idx) {
-	output = layers[layer_idx]->output;
-}
-
-void model::load_weights(std::string file_name) {
+void model::load_model(const std::string& file_name) {
 
 	std::ifstream file(file_name);
 	std::string current_line;
-	std::string current_parameter;
+	std::string parsed_data;
 	std::vector<int> shape;
+	
+	
+	std::vector<double> bais;
+	int idx = 0;
+	int line_idx = 0;
 
 	if (!file.is_open()) {
 		std::cout << "could not open file\n";
 		return;
 	}
 
-	std::getline(file, current_line);
-	while (!current_line.empty()) {
-
-		if (current_line.substr(0, 12) != "layer_shape,") {
-			std::cout << "file not formated correctly\n";
-			return;
-		}
-		shape.clear();
-		for (int i = 12; i < current_line.length(); i++) {
-
-			if (current_line[i] == ',' && !current_parameter.empty()) {
-				shape.push_back(std::stoi(current_parameter));
-				current_parameter.clear();
-			}
-			else if(current_line[i] != ',') {
-				current_parameter += current_line[i];
-			}
-		}
+	while (std::getline(file, current_line)) {
 		
-		add_layer(shape[0], shape[1], shape[2]);
+		if (current_line.substr(0, 12) == "dense_layer,") {
+			std::vector<std::vector<double>> dl_weights;
+			idx = 0;
+			shape.resize(3);
+			for (int i = 12; i < current_line.length(); i++) {
 
-		for (int i = 0; i < shape[1]; i++) {
-
-			std::getline(file, current_line);
-			
-			int idx = 0;
-			for (int j = 0; j < current_line.length(); j++){
-				if (current_line[j] == ',' && !current_parameter.empty()) {
-					layers.back()->weights[i][idx] = std::stold(current_parameter);
-					current_parameter.clear();
+				if (current_line[i] != ',' && current_line[i] != '\n') {
+					parsed_data += current_line[i];
+				}
+				else if (!parsed_data.empty()) {
+					shape[idx] = std::stoi(parsed_data);
+					parsed_data.clear();
 					idx++;
 				}
-				else if (current_line[j] != ',') {
-					current_parameter += current_line[j];
+			}
+			if (!parsed_data.empty()) {
+				shape[idx] = std::stoi(parsed_data);
+				parsed_data.clear();
+			}
+			dl_weights.resize(shape[1], std::vector<double>(shape[0]));
+			
+			idx = 0;
+			for (int i = 0; i < shape[1]; i++) {
+				std::getline(file, current_line);
+				for (int j = 0; j < current_line.length(); j++) {
+					if (current_line[j] != ',' && current_line[j] != '\n') {
+						parsed_data += current_line[j];
+					}
+					else if (!parsed_data.empty()) {
+						dl_weights[idx / shape[0]][idx % shape[0]] = std::stod(parsed_data);
+						parsed_data.clear();
+						idx++;
+					}
+				}
+				if (!parsed_data.empty()) {
+					dl_weights[idx / shape[0]][idx % shape[0]] = std::stod(parsed_data);
+					parsed_data.clear();
 				}
 			}
-		}
+			std::getline(file, current_line);
+			idx = 0;
+			bais.resize(shape[1]);
 
-		int idx = 0;
-		std::getline(file, current_line);
+			for (int i = 0; i < current_line.length(); i++) {
 
-		for (int i = 0; i < current_line.length(); i++) {
-			if (current_line[i] == ',' && !current_parameter.empty()) {
-				layers.back()->bais[idx] = std::stod(current_parameter);
-				current_parameter.clear();
-				idx++;
+				if (current_line[i] != ',' && current_line[i] != '\n') {
+					parsed_data += current_line[i];
+				}
+				else if (!parsed_data.empty()) {
+					bais[idx] = std::stod(parsed_data);
+					parsed_data.clear();
+					idx++;
+				}
 			}
-			else if (current_line[i] != ',') {
-				current_parameter += current_line[i];
+			if (!parsed_data.empty()) {
+				bais[idx] = std::stod(parsed_data);
+				parsed_data.clear();
 			}
+			dense_layer* new_layer = new dense_layer(shape[0], shape[1], sgd_mass);
+			new_layer->weights = dl_weights;
+			new_layer->bais = bais;
+
+			layers.push_back(new_layer);
+			activation_functions.push_back(shape[2]);
+			dl_weights.clear();
+			bais.clear();
+			layer_count++;
 		}
-		std::getline(file, current_line);
+		else if (current_line.substr(0, 20) == "convolutional_layer,") {
+			
+			std::vector<std::vector<std::vector<std::vector<double>>>> cl_weights;
+			idx = 0;
+			shape.resize(7);
+			for (int i = 20; i < current_line.length(); i++) {
+
+				if (current_line[i] != ',' && current_line[i] != '\n') {
+					parsed_data += current_line[i];
+				}
+				else if (!parsed_data.empty()) {
+					shape[idx] = std::stoi(parsed_data);
+					parsed_data.clear();
+					idx++;
+				}
+			}
+			if (!parsed_data.empty()) {
+				shape[idx] = std::stoi(parsed_data);
+				parsed_data.clear();
+			}
+			
+			idx = 0;
+
+			cl_weights.resize(shape[2], std::vector<std::vector<std::vector<double>>>(shape[1], std::vector<std::vector<double>>(shape[3], std::vector<double>(shape[3]))));
+			
+			for (int i = 0; i < shape[2]; i++) {
+				
+				for (int j = 0; j < shape[1]; j++) {
+					std::getline(file, current_line);
+					int weight_idx = 0;
+					for (int z = 0; z < current_line.length(); z++) {
+
+						if (current_line[z] != ',' && current_line[z] != '\n') {
+							parsed_data += current_line[z];
+						}
+						else if (!parsed_data.empty()) {
+							cl_weights[i][j][weight_idx / shape[3]][weight_idx % shape[3]] = std::stod(parsed_data);
+							parsed_data.clear();
+							weight_idx++;
+						}
+					}
+
+					if (!parsed_data.empty()) {
+						cl_weights[i][j][weight_idx / shape[3]][weight_idx % shape[3]] = std::stod(parsed_data);
+						parsed_data.clear();
+						weight_idx++;
+					}
+					
+				}
+				
+			}
+			idx = 0;
+			bais.resize(shape[2]);
+			std::getline(file, current_line);
+			for (int i = 0; i < current_line.length(); i++) {
+
+				if (current_line[i] != ',' && current_line[i] != '\n') {
+					parsed_data += current_line[i];
+				}
+				else if (!parsed_data.empty()) {
+					bais[idx] = std::stod(parsed_data);
+					parsed_data.clear();
+					idx++;
+				}
+			}
+			if (!parsed_data.empty()) {
+				bais[idx] = std::stod(parsed_data);
+				parsed_data.clear();
+			}
+			convolutional_layer* new_layer = new convolutional_layer(shape[0], shape[1], shape[2], shape[3], shape[4], shape[5], sgd_mass);
+			new_layer->weights = cl_weights;
+			new_layer->bais = bais;
+			layers.push_back(new_layer);
+			activation_functions.push_back(shape[6]);
+			layer_count++;
+		}
+		else if (current_line.substr(0, 18) == "max_pooling_layer,") {
+			shape.resize(4);
+			idx = 0;
+			for (int i = 18; i < current_line.length(); i++) {
+
+				if (current_line[i] != ',' && current_line[i] != '\n') {
+					parsed_data += current_line[i];
+				}
+				else if (!parsed_data.empty()) {
+					shape[idx] = std::stoi(parsed_data);
+					parsed_data.clear();
+					idx++;
+				}
+			}
+
+			if (!parsed_data.empty()) {
+				shape[idx] = std::stoi(parsed_data);
+				parsed_data.clear();
+			}
+
+			max_pooling_layer* new_layer = new max_pooling_layer(shape[0], shape[1], shape[2], shape[3]);
+			layers.push_back(new_layer);
+			activation_functions.push_back(activation_function::linear);
+			layer_count++;
+		}
 	}
-	file.close();
+
 }
 
 model::~model() {

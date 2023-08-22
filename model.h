@@ -1,76 +1,86 @@
 #pragma once
+#include <vector>
 #include <string>
+#include <fstream>
 #include "layer.h"
 
-enum model_type {classification, regression, general_adversarial};
+enum model_type { classification, regression, general_adversarial, res_net };
 
-enum activation_function{linear, sigmoid, softmax, rectified_linear};
+enum activation_function { linear, sigmoid, rectified_linear, softmax};
 
 class model {
 
 public:
 
-	std::vector<std::vector<double>> output;
+	double learning_rate;
 
 	model();
 	model(int _model_type);
 	model(int _model_type, double _learning_rate);
-	model(int _model_type, double _learning_rate, double _decay_rate);
 	model(int _model_type, double _learning_rate, double _decay_rate, double _sgd_mass);
 
-	void add_layer(int inputs, int neurons, int _activation_function);
+	void add_dense_layer(int _inputs, int _neurons, int _activation_function);
+	void add_convolutional_layer(int _input_size, int _input_channels, int _kernals, int _kernal_size, int _padding, int _stride, int _activation_function);
+	void add_pooling_layer(int _input_size, int _input_channels, int _kernal_size, int _padding, int _stride);
 	
-	void add_layer(int inputs, int neurons);
+	void forward(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_inputs, int starting_layer, int ending_layer);
+	void forward(std::vector<std::vector<double>>& batched_inputs, int starting_layer, int ending_layer);
+	void forward(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_inputs);
+	void forward(std::vector<std::vector<double>>& batched_inputs);
 
-	void forward(std::vector<std::vector<double>>& batched_data, int start_point, int end_point);
-	void forward(std::vector<std::vector<double>>& batched_data);
+	std::vector<std::vector<double>> dense_layer_output(int layer_index);
+	std::vector<std::vector<std::vector<std::vector<double>>>> convolutional_layer_output(int layer_index);
 
-	void backward(std::vector<std::vector<double>>& batched_targets, std::vector<std::vector<double>>& batched_data, int start_point, int end_point);
-	void backward(std::vector<std::vector<double>>& batched_targets, std::vector<std::vector<double>>& batched_data);
-	
-	void train(std::vector<std::vector<double>>& batched_data, std::vector<std::vector<double>>& batched_targets, bool print_loss);
-	
-	void train_gan_classifier(std::vector<std::vector<double>>& batched_data, std::vector<std::vector<double>>& real_data, std::vector<std::vector<double>>& batch_lables, bool print_loss);
-	void train_gan_classifier(std::vector<std::vector<double>>& batched_data, std::vector<std::vector<double>>& real_data, bool print_loss);
-
-	void train_gan_generator(std::vector<std::vector<double>>& batched_data, std::vector<std::vector<double>>& batched_targets, bool print_loss);
-	void train_gan_generator(std::vector<std::vector<double>>& batched_data, bool print_loss);
-
-	void decay();
-
+	double loss(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_targets);
 	double loss(std::vector<std::vector<double>>& batched_targets);
+	double loss(std::vector<int>& batched_targets);
 
-	void set_layer_boundry(int _gan_layer_boundry);
+	void backward(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_inputs, std::vector<std::vector<std::vector<std::vector<double>>>>& batched_targets, int starting_layer, int ending_layer);
+	void backward(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_inputs, std::vector<std::vector<double>>& batched_targets, int starting_layer, int ending_layer);
+	void backward(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_inputs, std::vector<int>& batched_targets, int starting_layer, int ending_layer);
+	void backward(std::vector<std::vector<double>>& batched_inputs, std::vector<std::vector<std::vector<std::vector<double>>>>& batched_targets, int starting_layer, int ending_layer);
+	void backward(std::vector<std::vector<double>>& batched_inputs, std::vector<std::vector<double>>& batched_targets, int starting_layer, int ending_layer);
+	void backward(std::vector<std::vector<double>>& batched_inputs, std::vector<int>& batched_targets, int starting_layer, int ending_layer);
 
-	void set_layer_boundry();
+	void backward(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_inputs, std::vector<std::vector<std::vector<std::vector<double>>>>& batched_targets);
+	void backward(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_inputs, std::vector<std::vector<double>>& batched_targets);
+	void backward(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_inputs, std::vector<int>& batched_targets);
+	void backward(std::vector<std::vector<double>>& batched_inputs, std::vector<std::vector<std::vector<std::vector<double>>>>& batched_targets);
+	void backward(std::vector<std::vector<double>>& batched_inputs, std::vector<std::vector<double>>& batched_targets);
+	void backward(std::vector<std::vector<double>>& batched_inputs, std::vector<int>& batched_targets);
 
-	void load_output();
-
-	void load_output(int layer_idx);
-
-	void update_parameters(int start_point, int end_point);
 	void update_parameters();
+	void update_parameters(int starting_layer, int ending_layer);
 
-	void print_output();
+	void train(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_inputs, std::vector<std::vector<std::vector<std::vector<double>>>>& batched_targets);
+	void train(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_inputs, std::vector<std::vector<double>>& batched_targets);
+	void train(std::vector<std::vector<std::vector<std::vector<double>>>>& batched_inputs, std::vector<int>& batched_targets);
+	void train(std::vector<std::vector<double>>& batched_inputs, std::vector<std::vector<std::vector<std::vector<double>>>>& batched_targets);
+	void train(std::vector<std::vector<double>>& batched_inputs, std::vector<std::vector<double>>& batched_targets);
+	void train(std::vector<std::vector<double>>& batched_inputs, std::vector<int>& batched_targets);
 
-	void save_weights(std::string file_name);
+	void decay_learning_rate();
 
-	void load_weights(std::string file_name);
+	void save_model(const std::string& file_name);
+	void load_model(const std::string& file_name);
+
+	std::vector<int> debug(int i) { return layers[i]->get_shape(); }
 
 	~model();
-
 private:
-
 	int type;
 	int layer_count;
-	int gan_layer_boundry;
-	std::vector<layer*> layers;
-	std::vector<int> activation_functions;
+	int step;
 	double starting_learning_rate;
-	double learning_rate;
 	double decay_rate;
 	double sgd_mass;
-	double step;
+	
+	std::vector<int> activation_functions;
+	std::vector<layer*> layers;
+	
+	void init_model(int _model_type, double _learning_rate, double _decay_rate, double _sgd_mass);
 
-	void init(int _type, double _learning_rate, double _decay_rate, double sgd_mass);
+	void write_dense_layer(std::ofstream& file, int layer_idx);
+	void write_convolutional_layer(std::ofstream& file, int layer_idx);
+	void write_pooling_layer(std::ofstream& file, int layer_idx);
 };

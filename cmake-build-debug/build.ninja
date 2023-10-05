@@ -79,12 +79,6 @@ build CMakeFiles/ML_Library.dir/model.cpp.obj: CXX_COMPILER__ML_Library_unscanne
   OBJECT_DIR = CMakeFiles\ML_Library.dir
   OBJECT_FILE_DIR = CMakeFiles\ML_Library.dir
 
-build CMakeFiles/ML_Library.dir/main.cpp.obj: CXX_COMPILER__ML_Library_unscanned_Debug C$:/Users/Conrad/CLionProjects/ML_Library/main.cpp || cmake_object_order_depends_target_ML_Library
-  DEP_FILE = CMakeFiles\ML_Library.dir\main.cpp.obj.d
-  FLAGS = -g -fdiagnostics-color=always
-  OBJECT_DIR = CMakeFiles\ML_Library.dir
-  OBJECT_FILE_DIR = CMakeFiles\ML_Library.dir
-
 
 # =============================================================================
 # Link build statements for STATIC_LIBRARY target ML_Library
@@ -93,7 +87,7 @@ build CMakeFiles/ML_Library.dir/main.cpp.obj: CXX_COMPILER__ML_Library_unscanned
 #############################################
 # Link the static library libML_Library.a
 
-build libML_Library.a: CXX_STATIC_LIBRARY_LINKER__ML_Library_Debug CMakeFiles/ML_Library.dir/library.cpp.obj CMakeFiles/ML_Library.dir/dense_layer.cpp.obj CMakeFiles/ML_Library.dir/convolutional_layer.cpp.obj CMakeFiles/ML_Library.dir/max_pooling_layer.cpp.obj CMakeFiles/ML_Library.dir/model.cpp.obj CMakeFiles/ML_Library.dir/main.cpp.obj
+build libML_Library.a: CXX_STATIC_LIBRARY_LINKER__ML_Library_Debug CMakeFiles/ML_Library.dir/library.cpp.obj CMakeFiles/ML_Library.dir/dense_layer.cpp.obj CMakeFiles/ML_Library.dir/convolutional_layer.cpp.obj CMakeFiles/ML_Library.dir/max_pooling_layer.cpp.obj CMakeFiles/ML_Library.dir/model.cpp.obj
   LANGUAGE_COMPILE_FLAGS = -g
   OBJECT_DIR = CMakeFiles\ML_Library.dir
   POST_BUILD = cd .
